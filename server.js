@@ -4,6 +4,7 @@ import cors from "cors";
 import { pool } from "./db.js";
 import authRoutes from "./routes/auth.js";
 import authMiddleware from "./middleware/auth.js";
+import dashboardRoutes from "./routes/dashboard.js";
 
 import swaggerUi from 'swagger-ui-express';
 import swaggerSpec from './swagger.js';
@@ -20,6 +21,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Routes
 app.use("/api", authRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 app.get("/api/protected", authMiddleware, async (req, res) => {
     try {
