@@ -4,7 +4,76 @@ import authMiddleware from "../middleware/auth.js";
 
 const router = express.Router();
 
-// Get all leads with pagination and search
+/**
+ * @swagger
+ * /api/leads:
+ *   get:
+ *     summary: List leads with pagination and filters
+ *     tags: [Leads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Filter by source (partial match)
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *         description: Filter by lead status
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Paginated leads list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Lead'
+ *                 total:
+ *                   type: integer
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *       401:
+ *         description: Unauthorized
+ *   post:
+ *     summary: Create a new lead
+ *     tags: [Leads]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LeadInput'
+ *     responses:
+ *       201:
+ *         description: Lead created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Lead'
+ *       401:
+ *         description: Unauthorized
+ */
 router.get("/", authMiddleware, async (req, res) => {
   const { search = '', status = '', page = 1, limit = 10 } = req.query;
   const offset = (page - 1) * limit;
@@ -55,7 +124,58 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 });
 
-// Update lead
+/**
+ * @swagger
+ * /api/leads/{id}:
+ *   put:
+ *     summary: Update a lead
+ *     tags: [Leads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LeadInput'
+ *     responses:
+ *       200:
+ *         description: Lead updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Lead'
+ *       404:
+ *         description: Lead not found
+ *       401:
+ *         description: Unauthorized
+ *   delete:
+ *     summary: Delete a lead
+ *     tags: [Leads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Lead deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Message'
+ *       401:
+ *         description: Unauthorized
+ */
 router.put("/:id", authMiddleware, async (req, res) => {
   const { id } = req.params;
   const { status, value, source } = req.body;

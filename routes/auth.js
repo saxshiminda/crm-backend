@@ -12,6 +12,7 @@ const router = Router();
  *   post:
  *     summary: Login user
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -70,6 +71,7 @@ router.post("/login", async (req, res) => {
  *   post:
  *     summary: Logout user
  *     tags: [Auth]
+ *     security: []
  *     responses:
  *       200:
  *         description: Logged out successfully
@@ -83,7 +85,8 @@ router.post("/logout", (req, res) => {
  * @swagger
  * /api/profile:
  *   post:
- *     summary: Update user profile
+ *     summary: Update user profile (legacy multipart route)
+ *     description: Legacy endpoint. Prefer PUT /api/users/profile for JSON updates.
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []

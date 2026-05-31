@@ -4,6 +4,68 @@ import authMiddleware from "../middleware/auth.js";
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/dashboard/stats:
+ *   get:
+ *     summary: Get dashboard statistics
+ *     description: Returns chart data and summary counts for the dashboard page.
+ *     tags: [Dashboard]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard stats payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 leadsByStatus:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       status: { type: string }
+ *                       count: { type: string }
+ *                 monthlySales:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       month: { type: string }
+ *                       total: { type: string }
+ *                 leadsBySource:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       source: { type: string }
+ *                       count: { type: string }
+ *                 tasksByPriority:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       priority: { type: string }
+ *                       count: { type: string }
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     total_leads: { type: string }
+ *                     total_revenue: { type: string }
+ *                     pending_tasks: { type: string }
+ *                 recentLeads:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       status: { type: string }
+ *                       value: { type: number }
+ *                       created_at: { type: string, format: date-time }
+ *       401:
+ *         description: Unauthorized
+ */
 router.get("/stats", authMiddleware, async (req, res) => {
   try {
     // 1. Leads by status

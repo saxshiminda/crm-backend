@@ -31,6 +31,33 @@ app.use("/api/users", userRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/messages", messageRoutes);
 
+/**
+ * @swagger
+ * /api/protected:
+ *   get:
+ *     summary: Get current authenticated user
+ *     description: Returns the logged-in user's profile. Used by the frontend after login.
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: This is a protected route
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ */
 app.get("/api/protected", authMiddleware, async (req, res) => {
     try {
         const result = await pool.query("SELECT id, name as username, email, phone, role, avatar FROM users WHERE id = $1", [req.user.id]);

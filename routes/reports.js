@@ -4,6 +4,50 @@ import authMiddleware from "../middleware/auth.js";
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/reports/sales:
+ *   get:
+ *     summary: Get sales report data
+ *     description: Summary metrics, monthly breakdown, and recent sales for the sales report page.
+ *     tags: [Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Sales report payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     total_sales: { type: integer }
+ *                     total_revenue: { type: number }
+ *                     avg_sale: { type: number }
+ *                     largest_sale: { type: number }
+ *                 monthly:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       month: { type: string }
+ *                       sort_key: { type: string }
+ *                       total: { type: number }
+ *                       count: { type: integer }
+ *                 recent:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id: { type: integer }
+ *                       amount: { type: number }
+ *                       sale_date: { type: string, format: date }
+ *       401:
+ *         description: Unauthorized
+ */
 router.get("/sales", authMiddleware, async (req, res) => {
   try {
     const summaryResult = await pool.query(`
@@ -45,6 +89,44 @@ router.get("/sales", authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/reports/users:
+ *   get:
+ *     summary: Get user report data
+ *     description: User list, role breakdown, and summary counts for the user report page.
+ *     tags: [Reports]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User report payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     total_users: { type: integer }
+ *                     admin_count: { type: integer }
+ *                     manager_count: { type: integer }
+ *                     user_count: { type: integer }
+ *                 roleStats:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       role: { type: string }
+ *                       count: { type: integer }
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized
+ */
 router.get("/users", authMiddleware, async (req, res) => {
   try {
     const usersResult = await pool.query(`

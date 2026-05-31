@@ -23,7 +23,39 @@ async function getOrCreateConversation(userA, userB) {
   return created.rows[0].id;
 }
 
-// All users except current (for starting chats)
+/**
+ * @swagger
+ * /api/messages/users:
+ *   get:
+ *     summary: List users available for chat
+ *     description: Returns all users except the current user, with unread counts and last message preview.
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Chat user list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id: { type: integer }
+ *                       name: { type: string }
+ *                       email: { type: string }
+ *                       role: { type: string }
+ *                       avatar: { type: string }
+ *                       unread_count: { type: integer }
+ *                       last_message: { type: string }
+ *                       last_message_at: { type: string, format: date-time }
+ *       401:
+ *         description: Unauthorized
+ */
 router.get("/users", authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
@@ -61,7 +93,40 @@ router.get("/users", authMiddleware, async (req, res) => {
   }
 });
 
-// Unread notifications for bell dropdown
+/**
+ * @swagger
+ * /api/messages/notifications:
+ *   get:
+ *     summary: Get unread message notifications
+ *     description: Returns unread chat notifications for the header bell dropdown.
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Notifications payload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 unread:
+ *                   type: integer
+ *                 notifications:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id: { type: integer }
+ *                       body: { type: string }
+ *                       created_at: { type: string, format: date-time }
+ *                       sender_id: { type: integer }
+ *                       sender_name: { type: string }
+ *                       sender_avatar: { type: string }
+ *                       other_user_id: { type: integer }
+ *       401:
+ *         description: Unauthorized
+ */
 router.get("/notifications", authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
@@ -104,6 +169,24 @@ router.get("/notifications", authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/messages/read-all:
+ *   patch:
+ *     summary: Mark all messages as read
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All messages marked as read
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Message'
+ *       401:
+ *         description: Unauthorized
+ */
 router.patch("/read-all", authMiddleware, async (req, res) => {
   try {
     await pool.query(
@@ -123,7 +206,73 @@ router.patch("/read-all", authMiddleware, async (req, res) => {
   }
 });
 
-// Get chat thread with a specific user
+/**
+ * @swagger
+ * /api/messages/conversations/{userId}/messages:
+ *   get:
+ *     summary: Get chat thread with a user
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the other user in the conversation
+ *     responses:
+ *       200:
+ *         description: Conversation messages
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 conversation_id: { type: integer }
+ *                 other_user:
+ *                   $ref: '#/components/schemas/User'
+ *                 messages:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ChatMessage'
+ *       400:
+ *         description: Invalid user
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ *   post:
+ *     summary: Send a message to a user
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SendMessageInput'
+ *     responses:
+ *       201:
+ *         description: Message sent
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ChatMessage'
+ *       400:
+ *         description: Invalid user or empty message
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ */
 router.get("/conversations/:userId/messages", authMiddleware, async (req, res) => {
   const otherUserId = parseInt(req.params.userId, 10);
   const currentUserId = req.user.id;
@@ -211,7 +360,32 @@ router.post("/conversations/:userId/messages", authMiddleware, async (req, res) 
   }
 });
 
-// Mark all messages from a user as read
+/**
+ * @swagger
+ * /api/messages/conversations/{userId}/read:
+ *   patch:
+ *     summary: Mark conversation with a user as read
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Conversation marked as read
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Message'
+ *       400:
+ *         description: Invalid user
+ *       401:
+ *         description: Unauthorized
+ */
 router.patch("/conversations/:userId/read", authMiddleware, async (req, res) => {
   const otherUserId = parseInt(req.params.userId, 10);
   const currentUserId = req.user.id;

@@ -31,7 +31,32 @@ const upload = multer({
   }
 });
 
-// Update profile
+/**
+ * @swagger
+ * /api/users/profile:
+ *   put:
+ *     summary: Update current user profile
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ProfileUpdateInput'
+ *     responses:
+ *       200:
+ *         description: Updated user profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.put("/profile", authMiddleware, async (req, res) => {
   const { name, phone } = req.body;
   try {
@@ -45,7 +70,42 @@ router.put("/profile", authMiddleware, async (req, res) => {
   }
 });
 
-// Upload avatar
+/**
+ * @swagger
+ * /api/users/avatar:
+ *   post:
+ *     summary: Upload profile avatar
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - avatar
+ *             properties:
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Avatar uploaded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 avatar:
+ *                   type: string
+ *                   example: /uploads/avatars/avatar-123456789.png
+ *       400:
+ *         description: No file uploaded
+ *       401:
+ *         description: Unauthorized
+ */
 router.post("/avatar", authMiddleware, upload.single('avatar'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   
@@ -58,7 +118,38 @@ router.post("/avatar", authMiddleware, upload.single('avatar'), async (req, res)
   }
 });
 
-// Change password
+/**
+ * @swagger
+ * /api/users/password:
+ *   put:
+ *     summary: Change current user password
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/PasswordChangeInput'
+ *     responses:
+ *       200:
+ *         description: Password updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Password updated successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Current password incorrect or unauthorized
+ *       404:
+ *         description: User not found
+ */
 router.put("/password", authMiddleware, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
