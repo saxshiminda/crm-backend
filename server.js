@@ -7,6 +7,8 @@ import authMiddleware from "./middleware/auth.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import leadRoutes from "./routes/leads.js";
 import userRoutes from "./routes/users.js";
+import reportRoutes from "./routes/reports.js";
+import messageRoutes from "./routes/messages.js";
 
 import swaggerUi from 'swagger-ui-express';
 import swaggerSpec from './swagger.js';
@@ -26,6 +28,8 @@ app.use("/api", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/messages", messageRoutes);
 
 app.get("/api/protected", authMiddleware, async (req, res) => {
     try {

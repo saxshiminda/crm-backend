@@ -59,18 +59,39 @@ async function seed() {
         priority VARCHAR(50) DEFAULT 'Medium',
         due_date DATE
       );
+
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        sender_name VARCHAR(255) NOT NULL,
+        sender_email VARCHAR(255),
+        subject VARCHAR(255) NOT NULL,
+        body TEXT NOT NULL,
+        is_read BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(255);
     `);
 
-    // 2. Add Admin User
+    // 2. Add Users
     const adminPassword = await bcrypt.hash("admin123", 10);
+    const userPassword = await bcrypt.hash("password123", 10);
     await client.query(`
-      INSERT INTO users (name, email, password, role)
-      VALUES ('Admin User', 'admin@crm.com', $1, 'Admin')
+      INSERT INTO users (name, email, password, role, phone)
+      VALUES
+        ('Admin User', 'admin@crm.com', $1, 'Admin', '+1 (555) 100-0001'),
+        ('Sarah Chen', 'sarah@crm.com', $2, 'Manager', '+1 (555) 100-0002'),
+        ('Marcus Webb', 'marcus@crm.com', $2, 'Manager', '+1 (555) 100-0003'),
+        ('Elena Rodriguez', 'elena@crm.com', $2, 'User', '+1 (555) 100-0004'),
+        ('James Okonkwo', 'james@crm.com', $2, 'User', '+1 (555) 100-0005'),
+        ('Priya Sharma', 'priya@crm.com', $2, 'User', '+1 (555) 100-0006')
       ON CONFLICT (email) DO NOTHING;
-    `, [adminPassword]);
+    `, [adminPassword, userPassword]);
 
     // 3. Clear old data for seeding
-    await client.query("DELETE FROM leads; DELETE FROM sales; DELETE FROM tasks;");
+    await client.query("DELETE FROM messages; DELETE FROM leads; DELETE FROM sales; DELETE FROM tasks;");
 
     // 4. Seed Leads
     const leadStatuses = ['New', 'Contacted', 'Qualified', 'Lost', 'Closed'];
@@ -103,6 +124,25 @@ async function seed() {
       const status = taskStatuses[Math.floor(Math.random() * taskStatuses.length)];
       const priority = taskPriorities[Math.floor(Math.random() * taskPriorities.length)];
       await client.query("INSERT INTO tasks (title, status, priority, due_date) VALUES ($1, $2, $3, CURRENT_DATE)", [title, status, priority]);
+    }
+
+    // 7. Seed Messages
+    const sampleMessages = [
+      { sender_name: 'Sarah Chen', sender_email: 'sarah@crm.com', subject: 'Q2 pipeline review', body: 'Hi, can we schedule a call to review the Q2 pipeline numbers? I noticed a few qualified leads that need follow-up before end of month.', is_read: false },
+      { sender_name: 'Marcus Webb', sender_email: 'marcus@crm.com', subject: 'New lead from referral', body: 'Just added a high-value referral lead from Acme Corp. Worth $12,500 — flagged as priority. Please assign to the right rep.', is_read: false },
+      { sender_name: 'Elena Rodriguez', sender_email: 'elena@crm.com', subject: 'Contract signed — TechFlow Inc', body: 'Great news! TechFlow Inc signed the annual contract. I updated the lead status to Closed. Total deal value: $8,200.', is_read: true },
+      { sender_name: 'James Okonkwo', sender_email: 'james@crm.com', subject: 'Follow-up reminder', body: 'Reminder: three contacted leads from last week still need a second touchpoint. I attached notes in the CRM for each.', is_read: true },
+      { sender_name: 'Priya Sharma', sender_email: 'priya@crm.com', subject: 'Weekly activity summary', body: 'Your weekly summary is ready. 14 new leads, 6 conversions, and $24,300 in closed revenue. Full breakdown is on the dashboard.', is_read: false },
+      { sender_name: 'System', sender_email: 'system@crm.com', subject: 'Security alert: new login', body: 'A new login to your account was detected from Chrome on macOS. If this was not you, please update your password immediately.', is_read: true },
+    ];
+
+    for (const msg of sampleMessages) {
+      const date = new Date();
+      date.setDate(date.getDate() - Math.floor(Math.random() * 7));
+      await client.query(
+        "INSERT INTO messages (sender_name, sender_email, subject, body, is_read, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        [msg.sender_name, msg.sender_email, msg.subject, msg.body, msg.is_read, date]
+      );
     }
 
     console.log("✅ Seeding completed successfully!");
