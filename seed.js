@@ -70,6 +70,27 @@ async function seed() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      DROP TABLE IF EXISTS chat_messages;
+      DROP TABLE IF EXISTS conversations;
+
+      CREATE TABLE conversations (
+        id SERIAL PRIMARY KEY,
+        user1_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user2_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user1_id, user2_id),
+        CHECK (user1_id < user2_id)
+      );
+
+      CREATE TABLE chat_messages (
+        id SERIAL PRIMARY KEY,
+        conversation_id INT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        sender_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        is_read BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
       ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(255);
@@ -91,7 +112,7 @@ async function seed() {
     `, [adminPassword, userPassword]);
 
     // 3. Clear old data for seeding
-    await client.query("DELETE FROM messages; DELETE FROM leads; DELETE FROM sales; DELETE FROM tasks;");
+    await client.query("DELETE FROM chat_messages; DELETE FROM conversations; DELETE FROM messages; DELETE FROM leads; DELETE FROM sales; DELETE FROM tasks;");
 
     // 4. Seed Leads
     const leadStatuses = ['New', 'Contacted', 'Qualified', 'Lost', 'Closed'];
@@ -126,24 +147,51 @@ async function seed() {
       await client.query("INSERT INTO tasks (title, status, priority, due_date) VALUES ($1, $2, $3, CURRENT_DATE)", [title, status, priority]);
     }
 
-    // 7. Seed Messages
-    const sampleMessages = [
-      { sender_name: 'Sarah Chen', sender_email: 'sarah@crm.com', subject: 'Q2 pipeline review', body: 'Hi, can we schedule a call to review the Q2 pipeline numbers? I noticed a few qualified leads that need follow-up before end of month.', is_read: false },
-      { sender_name: 'Marcus Webb', sender_email: 'marcus@crm.com', subject: 'New lead from referral', body: 'Just added a high-value referral lead from Acme Corp. Worth $12,500 — flagged as priority. Please assign to the right rep.', is_read: false },
-      { sender_name: 'Elena Rodriguez', sender_email: 'elena@crm.com', subject: 'Contract signed — TechFlow Inc', body: 'Great news! TechFlow Inc signed the annual contract. I updated the lead status to Closed. Total deal value: $8,200.', is_read: true },
-      { sender_name: 'James Okonkwo', sender_email: 'james@crm.com', subject: 'Follow-up reminder', body: 'Reminder: three contacted leads from last week still need a second touchpoint. I attached notes in the CRM for each.', is_read: true },
-      { sender_name: 'Priya Sharma', sender_email: 'priya@crm.com', subject: 'Weekly activity summary', body: 'Your weekly summary is ready. 14 new leads, 6 conversions, and $24,300 in closed revenue. Full breakdown is on the dashboard.', is_read: false },
-      { sender_name: 'System', sender_email: 'system@crm.com', subject: 'Security alert: new login', body: 'A new login to your account was detected from Chrome on macOS. If this was not you, please update your password immediately.', is_read: true },
-    ];
+    // 7. Seed Chat Messages
+    const userRows = await client.query("SELECT id, name FROM users ORDER BY id");
+    const usersByName = Object.fromEntries(userRows.rows.map(u => [u.name, u.id]));
 
-    for (const msg of sampleMessages) {
-      const date = new Date();
-      date.setDate(date.getDate() - Math.floor(Math.random() * 7));
-      await client.query(
-        "INSERT INTO messages (sender_name, sender_email, subject, body, is_read, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-        [msg.sender_name, msg.sender_email, msg.subject, msg.body, msg.is_read, date]
+    async function seedConversation(nameA, nameB, messages) {
+      const idA = usersByName[nameA];
+      const idB = usersByName[nameB];
+      if (!idA || !idB) return;
+      const [user1_id, user2_id] = idA < idB ? [idA, idB] : [idB, idA];
+      const conv = await client.query(
+        "INSERT INTO conversations (user1_id, user2_id) VALUES ($1, $2) RETURNING id",
+        [user1_id, user2_id]
       );
+      const conversationId = conv.rows[0].id;
+      for (const msg of messages) {
+        const senderId = usersByName[msg.from];
+        const date = new Date();
+        date.setMinutes(date.getMinutes() - msg.minutesAgo);
+        await client.query(
+          "INSERT INTO chat_messages (conversation_id, sender_id, body, is_read, created_at) VALUES ($1, $2, $3, $4, $5)",
+          [conversationId, senderId, msg.body, msg.is_read ?? false, date]
+        );
+      }
     }
+
+    await seedConversation('Admin User', 'Sarah Chen', [
+      { from: 'Sarah Chen', body: 'Hey! Can we review the Q2 pipeline together?', is_read: false, minutesAgo: 30 },
+      { from: 'Admin User', body: 'Sure, let me pull up the dashboard.', is_read: true, minutesAgo: 25 },
+      { from: 'Sarah Chen', body: 'I flagged three qualified leads that need follow-up this week.', is_read: false, minutesAgo: 20 },
+    ]);
+
+    await seedConversation('Admin User', 'Marcus Webb', [
+      { from: 'Marcus Webb', body: 'Just added a high-value referral from Acme Corp — $12,500.', is_read: false, minutesAgo: 120 },
+      { from: 'Admin User', body: 'Nice work. Assign it to Elena.', is_read: true, minutesAgo: 115 },
+    ]);
+
+    await seedConversation('Admin User', 'Elena Rodriguez', [
+      { from: 'Elena Rodriguez', body: 'TechFlow Inc signed! Updated the lead to Closed.', is_read: true, minutesAgo: 300 },
+      { from: 'Admin User', body: 'Congratulations! Great close.', is_read: true, minutesAgo: 290 },
+    ]);
+
+    await seedConversation('Sarah Chen', 'Marcus Webb', [
+      { from: 'Marcus Webb', body: 'Are you free for a quick sync on the referral pipeline?', is_read: true, minutesAgo: 60 },
+      { from: 'Sarah Chen', body: 'Yes, 2pm works for me.', is_read: true, minutesAgo: 55 },
+    ]);
 
     console.log("✅ Seeding completed successfully!");
   } catch (err) {

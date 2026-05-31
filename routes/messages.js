@@ -4,20 +4,98 @@ import authMiddleware from "../middleware/auth.js";
 
 const router = express.Router();
 
-router.get("/", authMiddleware, async (req, res) => {
+function pairIds(a, b) {
+  return a < b ? [a, b] : [b, a];
+}
+
+async function getOrCreateConversation(userA, userB) {
+  const [user1_id, user2_id] = pairIds(userA, userB);
+  const existing = await pool.query(
+    "SELECT id FROM conversations WHERE user1_id = $1 AND user2_id = $2",
+    [user1_id, user2_id]
+  );
+  if (existing.rows.length) return existing.rows[0].id;
+
+  const created = await pool.query(
+    "INSERT INTO conversations (user1_id, user2_id) VALUES ($1, $2) RETURNING id",
+    [user1_id, user2_id]
+  );
+  return created.rows[0].id;
+}
+
+// All users except current (for starting chats)
+router.get("/users", authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT id, sender_name, sender_email, subject, body, is_read, created_at
-      FROM messages
-      ORDER BY created_at DESC
-    `);
+    const result = await pool.query(
+      `SELECT u.id, u.name, u.email, u.role, u.avatar,
+        COALESCE(unread.count, 0)::int AS unread_count,
+        lm.body AS last_message,
+        lm.created_at AS last_message_at
+      FROM users u
+      LEFT JOIN conversations c ON (
+        (c.user1_id = $1 AND c.user2_id = u.id) OR
+        (c.user2_id = $1 AND c.user1_id = u.id)
+      )
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS count
+        FROM chat_messages cm
+        WHERE cm.conversation_id = c.id
+          AND cm.sender_id != $1
+          AND cm.is_read = false
+      ) unread ON true
+      LEFT JOIN LATERAL (
+        SELECT body, created_at
+        FROM chat_messages cm
+        WHERE cm.conversation_id = c.id
+        ORDER BY cm.created_at DESC
+        LIMIT 1
+      ) lm ON true
+      WHERE u.id != $1
+      ORDER BY COALESCE(lm.created_at, u.created_at) DESC, u.name ASC`,
+      [req.user.id]
+    );
+    res.json({ users: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Unread notifications for bell dropdown
+router.get("/notifications", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+        cm.id,
+        cm.body,
+        cm.created_at,
+        cm.sender_id,
+        u.name AS sender_name,
+        u.avatar AS sender_avatar,
+        CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END AS other_user_id
+      FROM chat_messages cm
+      JOIN conversations c ON cm.conversation_id = c.id
+      JOIN users u ON cm.sender_id = u.id
+      WHERE cm.sender_id != $1
+        AND cm.is_read = false
+        AND (c.user1_id = $1 OR c.user2_id = $1)
+      ORDER BY cm.created_at DESC
+      LIMIT 20`,
+      [req.user.id]
+    );
 
     const unreadResult = await pool.query(
-      "SELECT COUNT(*)::int AS unread FROM messages WHERE is_read = false"
+      `SELECT COUNT(*)::int AS unread
+      FROM chat_messages cm
+      JOIN conversations c ON cm.conversation_id = c.id
+      WHERE cm.sender_id != $1
+        AND cm.is_read = false
+        AND (c.user1_id = $1 OR c.user2_id = $1)`,
+      [req.user.id]
     );
 
     res.json({
-      messages: result.rows,
+      notifications: result.rows,
       unread: unreadResult.rows[0].unread
     });
   } catch (err) {
@@ -26,27 +104,141 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-router.patch("/:id/read", authMiddleware, async (req, res) => {
-  const { id } = req.params;
+router.patch("/read-all", authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(
-      "UPDATE messages SET is_read = true WHERE id = $1 RETURNING *",
-      [id]
+    await pool.query(
+      `UPDATE chat_messages cm
+       SET is_read = true
+       FROM conversations c
+       WHERE cm.conversation_id = c.id
+         AND cm.sender_id != $1
+         AND cm.is_read = false
+         AND (c.user1_id = $1 OR c.user2_id = $1)`,
+      [req.user.id]
     );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Message not found" });
-    }
-    res.json(result.rows[0]);
+    res.json({ message: "All messages marked as read" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-router.patch("/read-all", authMiddleware, async (_req, res) => {
+// Get chat thread with a specific user
+router.get("/conversations/:userId/messages", authMiddleware, async (req, res) => {
+  const otherUserId = parseInt(req.params.userId, 10);
+  const currentUserId = req.user.id;
+
+  if (!otherUserId || otherUserId === currentUserId) {
+    return res.status(400).json({ error: "Invalid user" });
+  }
+
   try {
-    await pool.query("UPDATE messages SET is_read = true WHERE is_read = false");
-    res.json({ message: "All messages marked as read" });
+    const userCheck = await pool.query("SELECT id, name, email, role, avatar FROM users WHERE id = $1", [otherUserId]);
+    if (!userCheck.rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const conversationId = await getOrCreateConversation(currentUserId, otherUserId);
+
+    const messages = await pool.query(
+      `SELECT cm.id, cm.body, cm.sender_id, cm.is_read, cm.created_at,
+        u.name AS sender_name, u.avatar AS sender_avatar
+      FROM chat_messages cm
+      JOIN users u ON cm.sender_id = u.id
+      WHERE cm.conversation_id = $1
+      ORDER BY cm.created_at ASC`,
+      [conversationId]
+    );
+
+    res.json({
+      conversation_id: conversationId,
+      other_user: userCheck.rows[0],
+      messages: messages.rows
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Send message to a user
+router.post("/conversations/:userId/messages", authMiddleware, async (req, res) => {
+  const otherUserId = parseInt(req.params.userId, 10);
+  const currentUserId = req.user.id;
+  const { body } = req.body;
+
+  if (!otherUserId || otherUserId === currentUserId) {
+    return res.status(400).json({ error: "Invalid user" });
+  }
+
+  if (!body || !body.trim()) {
+    return res.status(400).json({ error: "Message body is required" });
+  }
+
+  try {
+    const userCheck = await pool.query("SELECT id FROM users WHERE id = $1", [otherUserId]);
+    if (!userCheck.rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const conversationId = await getOrCreateConversation(currentUserId, otherUserId);
+
+    const result = await pool.query(
+      `INSERT INTO chat_messages (conversation_id, sender_id, body)
+       VALUES ($1, $2, $3)
+       RETURNING id, body, sender_id, is_read, created_at`,
+      [conversationId, currentUserId, body.trim()]
+    );
+
+    await pool.query(
+      "UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+      [conversationId]
+    );
+
+    const sender = await pool.query(
+      "SELECT name, avatar FROM users WHERE id = $1",
+      [currentUserId]
+    );
+
+    res.status(201).json({
+      ...result.rows[0],
+      sender_name: sender.rows[0].name,
+      sender_avatar: sender.rows[0].avatar
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Mark all messages from a user as read
+router.patch("/conversations/:userId/read", authMiddleware, async (req, res) => {
+  const otherUserId = parseInt(req.params.userId, 10);
+  const currentUserId = req.user.id;
+
+  if (!otherUserId || otherUserId === currentUserId) {
+    return res.status(400).json({ error: "Invalid user" });
+  }
+
+  try {
+    const [user1_id, user2_id] = pairIds(currentUserId, otherUserId);
+    const conv = await pool.query(
+      "SELECT id FROM conversations WHERE user1_id = $1 AND user2_id = $2",
+      [user1_id, user2_id]
+    );
+
+    if (!conv.rows.length) {
+      return res.json({ message: "No conversation yet" });
+    }
+
+    await pool.query(
+      `UPDATE chat_messages
+       SET is_read = true
+       WHERE conversation_id = $1 AND sender_id = $2 AND is_read = false`,
+      [conv.rows[0].id, otherUserId]
+    );
+
+    res.json({ message: "Conversation marked as read" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
